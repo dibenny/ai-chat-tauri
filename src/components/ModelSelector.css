@@ -1,0 +1,66 @@
+/* 模型选择器：与整体玫瑰粉风格一致 */
+.modelSelector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modelSelector__label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+/* 与侧边栏「开启新对话」按钮同风格 */
+.modelSelector__select {
+  width: 100%;
+  padding: 10px 12px;
+  min-height: 44px;
+  line-height: 1.4;
+  font-size: 14px;
+  border: 1px solid rgba(216, 91, 114, 0.25);
+  background: var(--white);
+  color: #D85B72;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  appearance: auto;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.modelSelector__select:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-strong);
+  color: #D85B72;
+}
+
+.modelSelector__select:active {
+  color: #D85B72;
+  background: rgba(236, 174, 185, 0.5);
+}
+
+.modelSelector__select:focus-visible {
+  color: #D85B72;
+  background: rgba(236, 174, 185, 0.28);
+  box-shadow: var(--shadow-strong);
+  outline: 2px solid rgba(216, 91, 114, 0.25);
+  outline-offset: 2px;
+}
+
+.modelSelector--loading,
+.modelSelector--error,
+.modelSelector--empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(236, 174, 185, 0.12);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.modelSelector--error {
+  color: var(--rose);
+  background: rgba(216, 91, 114, 0.08);
+}
