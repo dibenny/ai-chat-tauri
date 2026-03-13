@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Select, Spin, Alert, Typography } from 'antd';
 import type { OllamaModelInfo } from '../types/ollama';
-import './ModelSelector.css';
 
 const DEFAULT_MODEL = 'deepseek-r1:latest';
 
@@ -11,8 +11,7 @@ export interface ModelSelectorProps {
 }
 
 /**
- * 模型选择器：下拉框展示 Ollama 本地模型列表，选择后通过 onModelChange 回传。
- * 通过 invoke('get_ollama_models') 获取列表；当前模型不在列表中时默认选第一项。
+ * 模型选择器：使用 antd Select 展示 Ollama 本地模型列表，选择后通过 onModelChange 回传。
  */
 export function ModelSelector({ currentModel, onModelChange }: ModelSelectorProps) {
   const [models, setModels] = useState<OllamaModelInfo[]>([]);
@@ -28,11 +27,9 @@ export function ModelSelector({ currentModel, onModelChange }: ModelSelectorProp
         const list = await invoke<OllamaModelInfo[]>('get_ollama_models');
         if (!alive) return;
         setModels(Array.isArray(list) ? list : []);
-        // 若当前选中模型不在列表中，通知父组件使用列表第一项（或默认）
         const names = list?.map((m) => m.name) ?? [];
         if (currentModel && names.length > 0 && !names.includes(currentModel)) {
-          const fallback = names[0] ?? DEFAULT_MODEL;
-          onModelChange(fallback);
+          onModelChange(names[0] ?? DEFAULT_MODEL);
         }
       } catch (e) {
         if (!alive) return;
@@ -45,55 +42,58 @@ export function ModelSelector({ currentModel, onModelChange }: ModelSelectorProp
     return () => {
       alive = false;
     };
-  }, []); // 仅挂载时拉取一次；currentModel 变化时由父组件控制
+  }, []);
 
   const value =
     currentModel && models.some((m) => m.name === currentModel)
       ? currentModel
-      : models[0]?.name ?? '';
+      : models[0]?.name ?? undefined;
 
   if (loading) {
     return (
-      <div className="modelSelector modelSelector--loading" aria-busy="true">
-        加载模型中…
+      <div style={{ padding: '8px 0', textAlign: 'center' }} aria-busy="true">
+        <Spin size="small" tip="加载模型中…" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="modelSelector modelSelector--error" role="alert">
-        {error}
-      </div>
+      <Alert
+        type="error"
+        showIcon
+        message={error}
+        role="alert"
+        style={{ marginTop: 4 }}
+      />
     );
   }
 
   if (models.length === 0) {
     return (
-      <div className="modelSelector modelSelector--empty">
-        暂无本地模型，请先在 Ollama 中拉取模型
-      </div>
+      <Alert
+        type="info"
+        message="暂无本地模型"
+        description="请先在 Ollama 中拉取模型"
+        style={{ marginTop: 4 }}
+      />
     );
   }
 
   return (
-    <div className="modelSelector">
-      <label className="modelSelector__label" htmlFor="model-select">
+    <div>
+      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
         模型
-      </label>
-      <select
+      </Typography.Text>
+      <Select
         id="model-select"
-        className="modelSelector__select"
-        value={value}
-        onChange={(e) => onModelChange(e.target.value)}
         aria-label="选择对话模型"
-      >
-        {models.map((m) => (
-          <option key={m.name} value={m.name}>
-            {m.name}
-          </option>
-        ))}
-      </select>
+        style={{ width: '100%' }}
+        value={value}
+        onChange={onModelChange}
+        options={models.map((m) => ({ label: m.name, value: m.name }))}
+        placeholder="选择模型"
+      />
     </div>
   );
 }

@@ -3,8 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Layout, Button, Space, Typography, List, Divider, Spin } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Layout, Button, Space, Typography, List, Divider, Spin, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { Think, Bubble, Sender, Welcome, CodeHighlighter } from '@ant-design/x';
 import { ModelSelector } from './components/ModelSelector';
 import './App.css';
@@ -82,6 +82,7 @@ function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(PREFERRED_MODEL_KEY);
@@ -292,17 +293,29 @@ function App() {
     <Layout className="app-shell" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <Sider
         width={280}
+        collapsedWidth={0}
+        collapsed={sidebarCollapsed}
         className="sidebar"
         style={{
           background: 'var(--panel)',
           borderRight: '1px solid var(--border)',
-          padding: '34px 16px',
+          padding: '34px 20px',
         }}
       >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Title level={4} style={{ color: 'var(--rose)', margin: 0 }}>
             DogEgg AI
           </Title>
+          <Tooltip title="收起侧边栏">
+            <Button
+              type="link"
+              icon={<MenuFoldOutlined />}
+              onClick={() => setSidebarCollapsed(true)}
+              style={{ color: 'var(--rose)' }}
+            />
+          </Tooltip>
+        </div>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Button
             type="default"
             icon={<PlusOutlined />}
@@ -361,6 +374,22 @@ function App() {
 
       <Layout>
         <Content className="main__content" style={{ padding: '46px 16px 18px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {sidebarCollapsed && (
+            <Tooltip title="展开侧边栏">
+              <Button
+                type="text"
+                icon={<MenuUnfoldOutlined />}
+                onClick={() => setSidebarCollapsed(false)}
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  left: 16,
+                  zIndex: 1,
+                  color: 'var(--rose)',
+                }}
+              />
+            </Tooltip>
+          )}
           {isHome ? (
             <div className="home home--welcome">
               <Welcome
