@@ -1,13 +1,37 @@
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Layout, Button, Space, Typography, List, Divider, Spin } from 'antd';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Think, Bubble, Sender, Welcome, CodeHighlighter } from '@ant-design/x';
 import { ModelSelector } from './components/ModelSelector';
 import './App.css';
 
+const { Sider, Content } = Layout;
+const { Title, Text } = Typography;
+
 const PREFERRED_MODEL_KEY = 'preferred_model';
 const DEFAULT_MODEL = 'deepseek-r1:latest';
+
+/** 从 Markdown 代码块 className（language-xxx）解析出 lang，供 CodeHighlighter 使用 */
+function getCodeBlockLang(className?: string): string {
+  if (!className || typeof className !== 'string') return 'text';
+  const m = className.match(/language-(\S+)/);
+  return m ? m[1] : 'text';
+}
+
+/** 根据模型 id 得到展示名（用于 Welcome 等） */
+function getModelDisplayName(modelName: string): string {
+  const lower = modelName.toLowerCase();
+  if (lower.includes('deepseek') && (lower.includes('r1') || lower.includes('r2'))) {
+    return lower.includes('r2') ? 'DeepSeek-R2' : 'DeepSeek-R1';
+  }
+  if (lower.includes('qwen')) return 'Qwen';
+  const base = modelName.split(':')[0] ?? modelName;
+  return base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
+}
 
 type Role = 'user' | 'assistant' | 'system';
 
@@ -22,7 +46,7 @@ type Session = {
   id: string;
   title: string;
   messages: ChatMessage[];
-  updatedAt: number; // last used timestamp (ms)
+  updatedAt: number;
 };
 
 type StoredData = {
@@ -33,13 +57,7 @@ type StoredData = {
 const STORE_PATH = 'chat_history.json';
 const STORE_KEY = 'chat_history';
 const MAX_SESSIONS = 20;
-const WELCOME_MESSAGE: ChatMessage = {
-  role: 'system',
-  content: '你好！我是 DeepSeek-R1 助手，有什么可以帮你的？',
-  kind: 'normal',
-};
 
-// 解析 AI 返回的文本，提取 thinking 和 answer
 function parseAIResponse(text: string): { thinking?: string; answer: string } {
   const thinkingMatch = text.match(/<(?:thinking|think)>([\s\S]*?)<\/(?:thinking|think)>/);
   const answerMatch = text.match(/<answer>([\s\S]*?)<\/answer>/);
@@ -49,7 +67,6 @@ function parseAIResponse(text: string): { thinking?: string; answer: string } {
     return { thinking, answer: answerMatch[1].trim() };
   }
 
-  // 没有 <answer> 时：尽量把 <think>/<thinking> 块剥离出来，避免被 Markdown 当成 HTML 丢掉
   const stripped = text
     .replace(/<(?:thinking|think)>[\s\S]*?<\/(?:thinking|think)>/g, '')
     .trim();
@@ -116,10 +133,7 @@ function App() {
   async function persistHistory(sessions: Session[]) {
     try {
       const store = await getStore();
-      const payload: StoredData = {
-        sessions,
-        lastUpdated: Date.now(),
-      };
+      const payload: StoredData = { sessions, lastUpdated: Date.now() };
       await store.set(STORE_KEY, payload);
       await store.save();
     } catch (e) {
@@ -145,16 +159,13 @@ function App() {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!historyHydrated) return;
     void persistHistory(history);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history, historyHydrated]);
 
-  // 持久化用户选择的模型到 localStorage
   useEffect(() => {
     try {
       localStorage.setItem(PREFERRED_MODEL_KEY, selectedModel);
@@ -187,13 +198,13 @@ function App() {
     setHistory((prev) => normalizeSessions([session, ...prev]));
   }
 
-  // 发送消息
-  async function handleSend() {
-    if (!input.trim() || isLoading) return;
+  async function handleSend(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || isLoading) return;
 
     const myReq = ++requestSeq.current;
-    const userMessage: ChatMessage = { role: 'user', content: input, kind: 'normal' };
-    const nextMessagesForBackend = [...messagesForBackend, { role: 'user', content: input }];
+    const userMessage: ChatMessage = { role: 'user', content, kind: 'normal' };
+    const nextMessagesForBackend = [...messagesForBackend, { role: 'user', content }];
     setMessages((prev) => [
       ...prev,
       userMessage,
@@ -209,10 +220,8 @@ function App() {
       });
       if (myReq !== requestSeq.current) return;
 
-      // 解析 AI 返回的文本
       const { thinking, answer } = parseAIResponse(result);
 
-      // 移除占位消息，添加解析后的真实消息
       setMessages((prev) => {
         const filtered = prev.filter((msg) => msg.kind !== 'thinking_placeholder');
         return [...filtered, { role: 'assistant', content: answer, thinking, kind: 'normal' }];
@@ -220,7 +229,6 @@ function App() {
     } catch (error) {
       console.error('调用失败:', error);
       if (myReq !== requestSeq.current) return;
-      // 移除占位消息，添加错误提示
       setMessages((prev) => {
         const filtered = prev.filter((msg) => msg.kind !== 'thinking_placeholder');
         return [...filtered, { role: 'assistant', content: `出错了: ${error}`, kind: 'normal' }];
@@ -230,25 +238,29 @@ function App() {
     }
   }
 
-  // 处理回车发送（Shift+Enter换行）
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const isHome = messages.length === 0;
 
-  const handleNewChat = () => {
-    // 先把当前对话（如果有内容）存入历史
-    saveCurrentConversationToHistory();
-    // 终止当前请求并清空状态
+  const resetConversationView = () => {
+    // 终止可能进行中的请求，并回到「无对话」状态（展示 Welcome）
     requestSeq.current += 1;
-    setMessages([WELCOME_MESSAGE]);
-    setInput('');
     setIsLoading(false);
+    setInput('');
+    setMessages([]);
     setCurrentSessionId(null);
+  };
+
+  const handleNewChat = () => {
+    saveCurrentConversationToHistory();
+    resetConversationView();
+  };
+
+  const handleModelChange = (nextModel: string) => {
+    if (!nextModel || nextModel === selectedModel) return;
+    // 切换模型前，把当前对话存为历史（如有用户消息）
+    saveCurrentConversationToHistory();
+    // 重置右侧对话，再切换模型
+    resetConversationView();
+    setSelectedModel(nextModel);
   };
 
   const handleLoadSession = (sessionId: string) => {
@@ -272,170 +284,179 @@ function App() {
   const handleDeleteSession = (sessionId: string) => {
     setHistory((prev) => prev.filter((s) => s.id !== sessionId));
     if (currentSessionId === sessionId) {
-      requestSeq.current += 1;
-      setIsLoading(false);
-      setInput('');
-      setMessages([WELCOME_MESSAGE]);
-      setCurrentSessionId(null);
+      resetConversationView();
     }
   };
+
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar__top">
-          <div className="sidebar__title">DogEgg AI</div>
-          <button className="sidebar__newChat" type="button" onClick={handleNewChat}>
+    <Layout className="app-shell" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <Sider
+        width={280}
+        className="sidebar"
+        style={{
+          background: 'var(--panel)',
+          borderRight: '1px solid var(--border)',
+          padding: '34px 16px',
+        }}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Title level={4} style={{ color: 'var(--rose)', margin: 0 }}>
+            DogEgg AI
+          </Title>
+          <Button
+            type="default"
+            icon={<PlusOutlined />}
+            onClick={handleNewChat}
+            block
+            className="sidebar__newChat"
+          >
             开启新对话
-          </button>
-          <ModelSelector
-            currentModel={selectedModel}
-            onModelChange={setSelectedModel}
-          />
-        </div>
+          </Button>
+          <ModelSelector currentModel={selectedModel} onModelChange={handleModelChange} />
+        </Space>
 
         {history.length > 0 && (
           <>
-            <div className="sidebar__divider" aria-hidden="true">
-              <span className="sidebar__dividerLine" />
-              <span className="sidebar__dividerText">历史记录</span>
-              <span className="sidebar__dividerLine" />
-            </div>
-            <div className="sidebar__history" aria-label="历史会话列表">
-              {history.map((session) => (
-                <div
-                  key={session.id}
-                  className="sidebar__historyItem"
-                  onClick={() => handleLoadSession(session.id)}
-                >
-                  <span className="sidebar__historyTitle">{session.title}</span>
-                  <button
-                    type="button"
-                    className="sidebar__historyDelete"
-                    aria-label="删除会话"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteSession(session.id);
-                    }}
+            <Divider plain style={{ margin: '12px 0', color: 'var(--muted)' }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>历史记录</Text>
+            </Divider>
+            <div className="sidebar__history" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+              <List
+                dataSource={history}
+                style={{ paddingRight: 4 }}
+                renderItem={(session) => (
+                  <List.Item
+                    key={session.id}
+                    style={{ padding: 0, border: 'none', marginBottom: 10 }}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <div
+                      className="sidebar__historyItem"
+                      onClick={() => handleLoadSession(session.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleLoadSession(session.id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <Text ellipsis style={{ flex: 1, fontSize: 13 }}>
+                        {session.title}
+                      </Text>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        aria-label="删除会话"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSession(session.id);
+                        }}
+                        style={{ color: 'var(--rose)' }}
+                      />
+                    </div>
+                  </List.Item>
+                )}
+              />
             </div>
           </>
         )}
+      </Sider>
 
-        {/* 暂时隐藏编辑按钮 */}
-        {/* <div className="sidebar__bottom">
-          <button className="iconButton" type="button" aria-label="Settings">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              />
-              <path
-                d="M19.4 15a7.9 7.9 0 0 0 .1-1l2-1.2-2-3.4-2.3.6a7.6 7.6 0 0 0-1.7-1L15.2 6H8.8L8.5 8.9a7.6 7.6 0 0 0-1.7 1l-2.3-.6-2 3.4 2 1.2a7.9 7.9 0 0 0 .1 1 7.9 7.9 0 0 0-.1 1l-2 1.2 2 3.4 2.3-.6a7.6 7.6 0 0 0 1.7 1l.3 2.9h6.4l.3-2.9a7.6 7.6 0 0 0 1.7-1l2.3.6 2-3.4-2-1.2a7.9 7.9 0 0 0-.1-1Z"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinejoin="round"
-                opacity="0.85"
-              />
-            </svg>
-          </button>
-        </div> */}
-      </aside>
-
-      <main className="main">
-        <div className="main__content">
+      <Layout>
+        <Content className="main__content" style={{ padding: '46px 16px 18px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {isHome ? (
-            <div className="home">
-              <div className="home__hero">
-                <div className="home__title">我是DogEgg AI助手!</div>
-                {/* <div className="home__subtitle">在下方输入消息开始对话。</div> */}
-              </div>
+            <div className="home home--welcome">
+              <Welcome
+                icon="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*s5sNRo5LjfQAAAAAAAAAAAAADgCCAQ/fmt.webp"
+                title={`Hello，我是${getModelDisplayName(selectedModel)}模型`}
+                description={`基于${getModelDisplayName(selectedModel)}打造更卓越的智能对话助手`}
+                style={{ background: 'linear-gradient(97deg, #f2f9fe 0%, #f7f3ff 100%)' }}
+              />
             </div>
           ) : (
-            <div className="chat">
-              <div className="messages" role="log" aria-label="Chat messages">
+            <div className="chat chat-x" role="log" aria-label="Chat messages">
+              <div className="messages" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 0 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {messages.map((msg, index) => (
-                  <div key={index} className={`messageRow ${msg.role}`}>
-                    <div className={`bubble ${msg.role}`}>
-                      {msg.role === 'assistant' && msg.thinking && msg.kind !== 'thinking_placeholder' && (
-                        <details className="thinking">
-                          <summary>思考过程</summary>
-                          <div className="thinking__content">{msg.thinking}</div>
-                        </details>
-                      )}
-                      <div className="bubble__content">
-                        {msg.role === 'assistant' && msg.kind === 'thinking_placeholder' ? (
-                          <div className="thinkingDots" aria-label="思考中">
-                            <span className="thinkingDot" />
-                            <span className="thinkingDot" />
-                            <span className="thinkingDot" />
-                          </div>
-                        ) : msg.role === 'assistant' ? (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              a: (props) => (
-                                <a
-                                  {...props}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                />
-                              ),
-                            }}
-                          >
-                            {msg.content}
-                          </ReactMarkdown>
-                        ) : (
-                          msg.content
+                  <div key={index} className={`messageRow messageRow--x messageRow--${msg.role}`}>
+                    {msg.role === 'system' && (
+                      <Bubble.System content={msg.content} />
+                    )}
+                    {msg.role === 'user' && (
+                      <Bubble placement="end" content={msg.content} />
+                    )}
+                    {msg.role === 'assistant' && msg.kind === 'thinking_placeholder' && (
+                      <Think title="思考中" loading={<Spin size="small" />} />
+                    )}
+                    {msg.role === 'assistant' && msg.kind === 'normal' && (
+                      <>
+                        {msg.thinking != null && msg.thinking !== '' && (
+                          <Think title="思考过程" defaultExpanded={false}>
+                            {msg.thinking}
+                          </Think>
                         )}
-                      </div>
-                    </div>
+                        <Bubble
+                          placement="start"
+                          content={
+                            <div className="bubble__content">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  a: (props) => (
+                                    <a {...props} target="_blank" rel="noreferrer noopener" />
+                                  ),
+                                  pre: ({ children }) => {
+                                    const arr = React.Children.toArray(children);
+                                    const codeEl = arr.find(
+                                      (c): c is React.ReactElement<{ className?: string; children?: React.ReactNode }> =>
+                                        React.isValidElement(c) && c.type === 'code'
+                                    );
+                                    if (codeEl && React.isValidElement(codeEl) && codeEl.props?.className) {
+                                      const lang = getCodeBlockLang(codeEl.props.className);
+                                      const codeStr = typeof codeEl.props.children === 'string'
+                                        ? codeEl.props.children
+                                        : String(codeEl.props.children ?? '');
+                                      return (
+                                        <CodeHighlighter lang={lang} header={lang !== 'text' ? lang : null}>
+                                          {codeStr}
+                                        </CodeHighlighter>
+                                      );
+                                    }
+                                    return <pre>{children}</pre>;
+                                  },
+                                }}
+                              >
+                                {msg.content}
+                              </ReactMarkdown>
+                            </div>
+                          }
+                        />
+                      </>
+                    )}
                   </div>
                 ))}
                 <div ref={bottomRef} />
               </div>
             </div>
           )}
-        </div>
+        </Content>
 
-        <div className="composer">
-          <div className="composer__inner">
-            <textarea
-              className="composer__input"
-              rows={2}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="给狗蛋发消息"
-              disabled={isLoading}
-            />
-            <button
-              className="composer__send"
-              type="button"
-              onClick={handleSend}
-              disabled={isLoading || !input.trim()}
-              aria-label="Send message"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M4.5 19.5 20 12 4.5 4.5l2.2 6.2L15 12l-8.3 1.3-2.2 6.2Z"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-          <div className="composer__meta">
-            {isLoading ? '正在输入...' : 'Enter 发送，Shift+Enter 换行'}
-          </div>
+        <div className="composer composer--sender" style={{ padding: '18px 16px 26px', width: '100%', maxWidth: 1200, margin: '0 auto', boxSizing: 'border-box' }}>
+          <Sender
+            className="composer-sender"
+            value={input}
+            onChange={setInput}
+            onSubmit={(message) => handleSend(message)}
+            placeholder="请发消息"
+            disabled={isLoading}
+            loading={isLoading}
+            submitType="enter"
+            autoSize={{ minRows: 2, maxRows: 6 }}
+            footer={
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {isLoading ? '正在输入...' : 'Enter 发送，Shift+Enter 换行'}
+              </Text>
+            }
+          />
         </div>
-      </main>
-    </div>
+      </Layout>
+    </Layout>
   );
 }
 
