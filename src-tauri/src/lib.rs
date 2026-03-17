@@ -94,6 +94,53 @@ async fn get_ollama_models() -> Result<Vec<OllamaModelInfo>, String> {
 }
 
 #[tauri::command]
+fn get_home_dir() -> Result<String, String> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "无法获取用户主目录".to_string())
+}
+
+#[tauri::command]
+fn read_file(file_path: String) -> Result<String, String> {
+    std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("读取文件失败: {}", e))
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct FileEntry {
+    name: String,
+    is_dir: bool,
+    size: Option<u64>,
+}
+
+#[tauri::command]
+fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
+    let entries = std::fs::read_dir(&path)
+        .map_err(|e| format!("读取目录失败: {}", e))?;
+
+    let mut result = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+        let metadata = entry.metadata().ok();
+        result.push(FileEntry {
+            name: entry.file_name().to_string_lossy().to_string(),
+            is_dir: metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+            size: metadata.and_then(|m| if m.is_file() { Some(m.len()) } else { None }),
+        });
+    }
+
+    result.sort_by(|a, b| {
+        match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        }
+    });
+
+    Ok(result)
+}
+
+#[tauri::command]
 async fn chat_with_model(messages: Vec<Message>, model_name: String) -> Result<String, String> {
     let client = reqwest::Client::new();
     let model = if model_name.is_empty() {
@@ -133,7 +180,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![greet, ask_ai, get_ollama_models, chat_with_model])
+        .invoke_handler(tauri::generate_handler![greet, ask_ai, get_ollama_models, chat_with_model, read_file, list_dir, get_home_dir])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

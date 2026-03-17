@@ -21,6 +21,11 @@
       "csp": null
     }
   },
+  "plugins": {
+    "fs": {
+      "scope": ["**"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

@@ -3,10 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Layout, Button, Space, Typography, List, Divider, Spin, Tooltip } from 'antd';
-import { PlusOutlined, DeleteOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { Layout, Button, Space, Typography, List, Divider, Spin, Tooltip, Switch } from 'antd';
+import { PlusOutlined, DeleteOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ToolOutlined } from '@ant-design/icons';
 import { Think, Bubble, Sender, Welcome, CodeHighlighter } from '@ant-design/x';
 import { ModelSelector } from './components/ModelSelector';
+import { AgentChat } from './components/AgentChat';
 import './App.css';
 
 const { Sider, Content } = Layout;
@@ -83,6 +84,7 @@ function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(PREFERRED_MODEL_KEY);
@@ -326,6 +328,11 @@ function App() {
             开启新对话
           </Button>
           <ModelSelector currentModel={selectedModel} onModelChange={handleModelChange} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+            <ToolOutlined style={{ color: 'var(--rose)' }} />
+            <Text style={{ flex: 1, fontSize: 13 }}>Agent 模式</Text>
+            <Switch checked={agentMode} onChange={setAgentMode} />
+          </div>
         </Space>
 
         {history.length > 0 && (
@@ -390,7 +397,9 @@ function App() {
               />
             </Tooltip>
           )}
-          {isHome ? (
+          {agentMode ? (
+            <AgentChat selectedModel={selectedModel} onMessagesChange={setMessages} />
+          ) : isHome ? (
             <div className="home home--welcome">
               <Welcome
                 icon="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*s5sNRo5LjfQAAAAAAAAAAAAADgCCAQ/fmt.webp"
@@ -466,24 +475,26 @@ function App() {
           )}
         </Content>
 
-        <div className="composer composer--sender" style={{ padding: '18px 16px 26px', width: '100%', maxWidth: 1200, margin: '0 auto', boxSizing: 'border-box' }}>
-          <Sender
-            className="composer-sender"
-            value={input}
-            onChange={setInput}
-            onSubmit={(message) => handleSend(message)}
-            placeholder="请发消息"
-            disabled={isLoading}
-            loading={isLoading}
-            submitType="enter"
-            autoSize={{ minRows: 2, maxRows: 6 }}
-            footer={
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                {isLoading ? '正在输入...' : 'Enter 发送，Shift+Enter 换行'}
-              </Text>
-            }
-          />
-        </div>
+        {!agentMode && (
+          <div className="composer composer--sender" style={{ padding: '18px 16px 26px', width: '100%', maxWidth: 1200, margin: '0 auto', boxSizing: 'border-box' }}>
+            <Sender
+              className="composer-sender"
+              value={input}
+              onChange={setInput}
+              onSubmit={(message) => handleSend(message)}
+              placeholder="请发消息"
+              disabled={isLoading}
+              loading={isLoading}
+              submitType="enter"
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              footer={
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {isLoading ? '正在输入...' : 'Enter 发送，Shift+Enter 换行'}
+                </Text>
+              }
+            />
+          </div>
+        )}
       </Layout>
     </Layout>
   );
