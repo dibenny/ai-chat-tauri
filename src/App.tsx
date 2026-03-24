@@ -40,7 +40,10 @@ type ChatMessage = {
   role: Role;
   content: string;
   thinking?: string;
-  kind?: 'normal' | 'thinking_placeholder';
+  kind?: 'normal' | 'thinking_placeholder' | 'tool_call' | 'tool_result';
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  toolResult?: unknown;
 };
 
 type Session = {
@@ -188,17 +191,55 @@ function App() {
     return text.slice(0, 20);
   }
 
+  function isSameConversation(a: ChatMessage[], b: ChatMessage[]): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((msg, idx) => {
+      const other = b[idx];
+      return (
+        msg.role === other.role
+        && msg.content === other.content
+        && msg.thinking === other.thinking
+        && msg.kind === other.kind
+      );
+    });
+  }
+
   function saveCurrentConversationToHistory() {
     const snapshot = getConversationSnapshot(messages);
     if (!hasUserMessage(snapshot)) return;
     const now = Date.now();
-    const session: Session = {
-      id: `${now}-${Math.random().toString(16).slice(2)}`,
-      title: makeSessionTitle(snapshot),
-      messages: snapshot,
-      updatedAt: now,
-    };
-    setHistory((prev) => normalizeSessions([session, ...prev]));
+    const title = makeSessionTitle(snapshot);
+
+    setHistory((prev) => {
+      // 正在查看历史会话时，更新该会话，避免“开启新对话”时新增重复记录
+      if (currentSessionId) {
+        const existing = prev.find((s) => s.id === currentSessionId);
+        if (existing) {
+          const updated: Session = {
+            ...existing,
+            title,
+            messages: snapshot,
+            updatedAt: now,
+          };
+          return normalizeSessions([updated, ...prev.filter((s) => s.id !== currentSessionId)]);
+        }
+      }
+
+      // 非历史会话场景：若已有完全相同的会话，直接更新时间并前置，不重复新增
+      const duplicate = prev.find((s) => isSameConversation(s.messages, snapshot));
+      if (duplicate) {
+        const updated: Session = { ...duplicate, title, updatedAt: now };
+        return normalizeSessions([updated, ...prev.filter((s) => s.id !== duplicate.id)]);
+      }
+
+      const session: Session = {
+        id: `${now}-${Math.random().toString(16).slice(2)}`,
+        title,
+        messages: snapshot,
+        updatedAt: now,
+      };
+      return normalizeSessions([session, ...prev]);
+    });
   }
 
   async function handleSend(text?: string) {

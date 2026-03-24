@@ -318,7 +318,7 @@ body {
 .bubble {
   max-width: min(680px, 78%);
   padding: 14px 16px;
-  border-radius: 18px;
+  border-radius: 8px;
   line-height: 1.5;
   word-break: break-word;
   border: 1px solid var(--border);
@@ -333,6 +333,14 @@ body {
 .bubble.assistant {
   background: var(--white);
   color: var(--text);
+}
+
+/* 强制覆盖 Ant Design X 默认气泡底色，统一白色消息框 */
+.chat-x .ant-x-bubble,
+.chat-x .ant-x-bubble .ant-x-bubble-content,
+.chat-x .ant-bubble,
+.chat-x .ant-bubble .ant-bubble-content {
+  background: var(--white) !important;
 }
 
 .bubble.system {

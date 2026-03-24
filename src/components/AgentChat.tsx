@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Button, Spin, Typography } from 'antd';
+import { Spin, Typography } from 'antd';
 import { Think, Bubble, Sender, Welcome, CodeHighlighter } from '@ant-design/x';
 import { listDir, readFile } from '../api/file';
 import type { FileEntry } from '../api/file';
@@ -139,7 +139,7 @@ export function AgentChat({ selectedModel, onMessagesChange }: AgentChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [homeDir, setHomeDir] = useState<string>('');
+  const [_homeDir, setHomeDir] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const requestSeq = useRef(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
